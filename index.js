@@ -342,7 +342,139 @@ app.post('/aulas', (req, res) => {
     res.status(500).json({ error: 'Erro ao criar aula' });
   }
 });
+app.get('/trocas', (req, res) => {
+  try {
+    const db = readDB();
+    // Add details about professors and classes to each exchange
+    const trocasDetalhadas = db.trocas.map(troca => {
+      const professorOriginal = db.professores.find(p => p.id === troca.professorIdOriginal);
+      const professorSubstituto = db.professores.find(p => p.id === troca.professorIdSubstituto);
+      const aula = db.aulas.find(a => a.id === troca.aulaId);
+      
+      return {
+        ...troca,
+        professorOriginal: professorOriginal ? {
+          id: professorOriginal.id,
+          nome: professorOriginal.nome
+        } : null,
+        professorSubstituto: professorSubstituto ? {
+          id: professorSubstituto.id,
+          nome: professorSubstituto.nome
+        } : null,
+        aula: aula ? {
+          id: aula.id,
+          data: aula.data,
+          horario: aula.horario,
+          turma: aula.turma
+        } : null
+      };
+    });
+    
+    res.json(trocasDetalhadas);
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao buscar trocas' });
+  }
+});
 
+app.post('/trocas', (req, res) => {
+  try {
+    const db = readDB();
+    const { aulaId, professorIdOriginal, professorIdSubstituto, motivo } = req.body;
+    
+    // Validações
+    if (!aulaId || !professorIdOriginal || !professorIdSubstituto || !motivo) {
+      return res.status(400).json({ 
+        error: 'Todos os campos são obrigatórios' 
+      });
+    }
+    
+    // Verificar se a aula existe
+    const aula = db.aulas.find(a => a.id === aulaId);
+    if (!aula) {
+      return res.status(400).json({ error: 'Aula não encontrada' });
+    }
+    
+    // Verificar se os professores existem
+    const professorOriginal = db.professores.find(p => p.id === professorIdOriginal);
+    const professorSubstituto = db.professores.find(p => p.id === professorIdSubstituto);
+    
+    if (!professorOriginal || !professorSubstituto) {
+      return res.status(400).json({ error: 'Um ou mais professores não encontrados' });
+    }
+    
+    // Verificar se o professor original é realmente o professor da aula
+    if (aula.professorId !== professorIdOriginal) {
+      return res.status(400).json({ 
+        error: 'O professor original não está designado para esta aula' 
+      });
+    }
+    
+    const novaTroca = {
+      id: db.trocas.length + 1,
+      aulaId,
+      professorIdOriginal,
+      professorIdSubstituto,
+      motivo,
+      status: 'PENDENTE',
+      createdAt: new Date().toISOString()
+    };
+    
+    db.trocas.push(novaTroca);
+    writeDB(db);
+    
+    res.status(201).json({ 
+      message: 'Solicitação de troca criada com sucesso',
+      troca: novaTroca
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao criar solicitação de troca' });
+  }
+});
+
+app.put('/trocas/:id', (req, res) => {
+  try {
+    const db = readDB();
+    const trocaId = parseInt(req.params.id, 10);
+    const { status } = req.body;
+    
+    const trocaIndex = db.trocas.findIndex(t => t.id === trocaId);
+    if (trocaIndex === -1) {
+      return res.status(404).json({ error: 'Troca não encontrada' });
+    }
+    
+    // Validar status
+    if (!['APROVADA', 'REJEITADA'].includes(status)) {
+      return res.status(400).json({ 
+        error: 'Status inválido. Use APROVADA ou REJEITADA' 
+      });
+    }
+    
+    const troca = db.trocas[trocaIndex];
+    
+    // Se aprovada, atualizar o professor da aula
+    if (status === 'APROVADA') {
+      const aulaIndex = db.aulas.findIndex(a => a.id === troca.aulaId);
+      if (aulaIndex !== -1) {
+        db.aulas[aulaIndex].professorId = troca.professorIdSubstituto;
+      }
+    }
+    
+    // Atualizar status da troca
+    db.trocas[trocaIndex] = {
+      ...troca,
+      status,
+      updatedAt: new Date().toISOString()
+    };
+    
+    writeDB(db);
+    res.json({
+      message: `Troca ${status.toLowerCase()} com sucesso`,
+      troca: db.trocas[trocaIndex]
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao atualizar troca' });
+  }
+});
 app.delete('/aulas/:id', (req, res) => {
   try {
     const db = readDB();
