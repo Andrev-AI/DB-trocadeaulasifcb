@@ -38,12 +38,12 @@ const initialDB = {
 
 // Estrutura inicial do banco de dados já foi declarada acima
 
-if (!fs.existsSync('./database.json')) {
-  fs.writeFileSync('./database.json', JSON.stringify(initialDB));
+if (!fs.existsSync('./tmp/database.json')) {
+  fs.writeFileSync('./tmp/database.json', JSON.stringify(initialDB));
 }
 
 function readDB() {
-  let db = JSON.parse(fs.readFileSync('./database.json'));
+  let db = JSON.parse(fs.readFileSync('./tmp/database.json'));
   // Garante que todas as "tabelas" existem
   db.materias = db.materias || [];
   db.professores = db.professores || [];
@@ -53,7 +53,7 @@ function readDB() {
 }
 
 function writeDB(data) {
-  fs.writeFileSync('./database.json', JSON.stringify(data, null, 2));
+  fs.writeFileSync('./tmp/database.json', JSON.stringify(data, null, 2));
 }
 
 // Rotas para matérias
