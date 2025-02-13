@@ -1,19 +1,25 @@
-js
 require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
 
 const app = express();
-const port = process.env.PORT || 3000;
 
 const pool = new Pool({
-  connectionString: process.env.POSTGRES_URL
+  connectionString: process.env.POSTGRES_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Health check route
+app.get('/', (req, res) => {
+  res.json({ status: 'ok' });
+});
 
 // Routes for Materias
 app.get('/api/materias', async (req, res) => {
@@ -65,7 +71,13 @@ app.post('/api/aulas', async (req, res) => {
   }
 });
 
-// Start server
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+// For local development only
+if (process.env.NODE_ENV !== 'production') {
+  const port = process.env.PORT || 3000;
+  app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+  });
+}
+
+// Export for Vercel
+module.exports = app;
