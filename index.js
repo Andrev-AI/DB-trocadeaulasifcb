@@ -1,5 +1,6 @@
 const express = require('express');
 const fs = require('fs');
+const path = require('path');
 const cors = require('cors');
 const app = express();
 const port = process.env.PORT || 3000;
@@ -9,22 +10,22 @@ app.use(express.json());
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type'],
+  allowedHeaders: ['Content-Type']
 }));
 
-// Logging middleware with timestamp
+// Logging middleware com timestamp
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] Requisição recebida:`, {
     method: req.method,
     path: req.path,
     body: req.body,
-    headers: req.headers,
+    headers: req.headers
   });
   next();
 });
 
-// Database Configuration
-const dbPath = '/tmp/database.json';
+// Caminho do banco de dados
+const dbPath = path.join('/tmp', 'database.json');
 const initialDB = {
   materias: [],
   professores: [],
@@ -32,15 +33,15 @@ const initialDB = {
   trocas: []
 };
 
-// Database Functions
+// Funções de acesso ao banco de dados
 function initializeDB() {
   try {
     if (!fs.existsSync(dbPath)) {
-      fs.writeFileSync(dbPath, JSON.stringify(initialDB));
+      fs.writeFileSync(dbPath, JSON.stringify(initialDB, null, 2));
+      console.log('Banco de dados inicializado.');
     }
   } catch (error) {
-    console.error('Error initializing database:', error);
-    return initialDB;
+    console.error('Erro ao inicializar banco de dados:', error);
   }
 }
 
@@ -51,15 +52,16 @@ function readDB() {
     }
     const data = fs.readFileSync(dbPath, 'utf8');
     const db = JSON.parse(data);
+    // Garante que todas as "tabelas" existem
     return {
-      materias: db.materias || [],
-      professores: db.professores || [],
-      aulas: db.aulas || [],
-      trocas: db.trocas || []
+      materias: Array.isArray(db.materias) ? db.materias : [],
+      professores: Array.isArray(db.professores) ? db.professores : [],
+      aulas: Array.isArray(db.aulas) ? db.aulas : [],
+      trocas: Array.isArray(db.trocas) ? db.trocas : []
     };
   } catch (error) {
-    console.error('Error reading database:', error);
-    return initialDB;
+    console.error('Erro ao ler banco de dados:', error);
+    return { ...initialDB };
   }
 }
 
@@ -67,15 +69,17 @@ function writeDB(data) {
   try {
     fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
   } catch (error) {
-    console.error('Error writing to database:', error);
+    console.error('Erro ao escrever no banco de dados:', error);
     throw error;
   }
 }
 
-// Initialize database on startup
+// Inicializa o banco de dados
 initializeDB();
 
-// Matérias Routes
+/* ============================
+   Rotas de MATÉRIAS
+=============================== */
 app.get('/materias', (req, res) => {
   try {
     const db = readDB();
@@ -90,11 +94,9 @@ app.get('/materias/:id', (req, res) => {
     const db = readDB();
     const materiaId = parseInt(req.params.id, 10);
     const materia = db.materias.find(m => m.id === materiaId);
-    
     if (!materia) {
       return res.status(404).json({ error: 'Matéria não encontrada' });
     }
-    
     res.json(materia);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao buscar matéria' });
@@ -108,14 +110,14 @@ app.post('/materias', (req, res) => {
     if (!nome) {
       return res.status(400).json({ error: 'Nome é obrigatório' });
     }
-    const novaMateria = { 
-      id: db.materias.length + 1, 
+    const novaMateria = {
+      id: db.materias.length + 1,
       nome,
       createdAt: new Date().toISOString()
     };
     db.materias.push(novaMateria);
     writeDB(db);
-    return res.status(201).json(novaMateria);
+    res.status(201).json(novaMateria);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao criar matéria' });
   }
@@ -126,20 +128,17 @@ app.put('/materias/:id', (req, res) => {
     const db = readDB();
     const materiaId = parseInt(req.params.id, 10);
     const { nome } = req.body;
-    const materiaIndex = db.materias.findIndex(m => m.id === materiaId);
-    
-    if (materiaIndex === -1) {
+    const index = db.materias.findIndex(m => m.id === materiaId);
+    if (index === -1) {
       return res.status(404).json({ error: 'Matéria não encontrada' });
     }
-    
-    db.materias[materiaIndex] = {
-      ...db.materias[materiaIndex],
-      nome: nome || db.materias[materiaIndex].nome,
+    db.materias[index] = {
+      ...db.materias[index],
+      nome: nome || db.materias[index].nome,
       updatedAt: new Date().toISOString()
     };
-    
     writeDB(db);
-    res.json(db.materias[materiaIndex]);
+    res.json(db.materias[index]);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao atualizar matéria' });
   }
@@ -150,31 +149,25 @@ app.delete('/materias/:id', (req, res) => {
     const db = readDB();
     const materiaId = parseInt(req.params.id, 10);
     const materia = db.materias.find(m => m.id === materiaId);
-    
     if (!materia) {
       return res.status(404).json({ error: 'Matéria não encontrada' });
     }
-    
-    // Verificar se há professores vinculados
-    const professorComMateria = db.professores.some(p => p.materias.includes(materiaId));
-    if (professorComMateria) {
-      return res.status(400).json({ 
-        error: 'Não é possível remover matéria que possui professores vinculados' 
-      });
+    // Verifica se alguma disciplina está vinculada a professores
+    const vinculo = db.professores.some(p => p.materias.includes(materiaId));
+    if (vinculo) {
+      return res.status(400).json({ error: 'Não é possível remover matéria com professores vinculados' });
     }
-    
     db.materias = db.materias.filter(m => m.id !== materiaId);
     writeDB(db);
-    res.json({ 
-      message: 'Matéria removida com sucesso',
-      removed: materia 
-    });
+    res.json({ message: 'Matéria removida com sucesso', removed: materia });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao remover matéria' });
   }
 });
 
-// Professores Routes
+/* ============================
+   Rotas de PROFESSORES
+=============================== */
 app.get('/professores', (req, res) => {
   try {
     const db = readDB();
@@ -189,20 +182,15 @@ app.get('/professores/:id', (req, res) => {
     const db = readDB();
     const professorId = parseInt(req.params.id, 10);
     const professor = db.professores.find(p => p.id === professorId);
-    
     if (!professor) {
       return res.status(404).json({ error: 'Professor não encontrado' });
     }
-    
-    // Adicionar matérias detalhadas ao professor
-    const professorComMaterias = {
+    // Adiciona detalhes das matérias vinculadas
+    const professorDetalhado = {
       ...professor,
-      materias: professor.materias.map(materiaId => {
-        return db.materias.find(m => m.id === materiaId);
-      }).filter(Boolean)
+      materias: professor.materias.map(id => db.materias.find(m => m.id === id)).filter(Boolean)
     };
-    
-    res.json(professorComMaterias);
+    res.json(professorDetalhado);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao buscar professor' });
   }
@@ -212,31 +200,22 @@ app.post('/professores', (req, res) => {
   try {
     const db = readDB();
     const { nome, materiaIds } = req.body;
-    
     if (!nome) {
       return res.status(400).json({ error: 'Nome é obrigatório' });
     }
-    
-    // Validar se todas as matérias existem
-    if (materiaIds) {
-      const materiasExistem = materiaIds.every(id => 
-        db.materias.some(m => m.id === id)
-      );
-      if (!materiasExistem) {
-        return res.status(400).json({ error: 'Uma ou mais matérias não existem' });
-      }
+    // Validação: conferir se cada matéria existe
+    if (materiaIds && !materiaIds.every(id => db.materias.some(m => m.id === id))) {
+      return res.status(400).json({ error: 'Uma ou mais matérias não existem' });
     }
-    
-    const novoProfessor = { 
-      id: db.professores.length + 1, 
-      nome, 
+    const novoProfessor = {
+      id: db.professores.length + 1,
+      nome,
       materias: materiaIds || [],
       createdAt: new Date().toISOString()
     };
-    
     db.professores.push(novoProfessor);
     writeDB(db);
-    return res.status(201).json(novoProfessor);
+    res.status(201).json(novoProfessor);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao criar professor' });
   }
@@ -247,43 +226,34 @@ app.delete('/professores/:id', (req, res) => {
     const db = readDB();
     const professorId = parseInt(req.params.id, 10);
     const professor = db.professores.find(p => p.id === professorId);
-    
     if (!professor) {
       return res.status(404).json({ error: 'Professor não encontrado' });
     }
-    
-    // Verificar se há aulas agendadas
-    const temAulas = db.aulas.some(aula => aula.professorId === professorId);
-    if (temAulas) {
-      return res.status(400).json({ 
-        error: 'Não é possível remover professor com aulas agendadas' 
-      });
+    // Verifica se há aulas agendadas para o professor
+    const possuiAulas = db.aulas.some(a => a.professorId === professorId);
+    if (possuiAulas) {
+      return res.status(400).json({ error: 'Não é possível remover professor com aulas agendadas' });
     }
-    
     db.professores = db.professores.filter(p => p.id !== professorId);
     writeDB(db);
-    res.json({ 
-      message: 'Professor removido com sucesso',
-      removed: professor 
-    });
+    res.json({ message: 'Professor removido com sucesso', removed: professor });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao remover professor' });
   }
 });
 
-// Aulas Routes
+/* ============================
+   Rotas de AULAS
+=============================== */
 app.get('/aulas', (req, res) => {
   try {
     const db = readDB();
-    // Adicionar detalhes do professor a cada aula
+    // Detalha o professor para cada aula
     const aulasDetalhadas = db.aulas.map(aula => {
       const professor = db.professores.find(p => p.id === aula.professorId);
       return {
         ...aula,
-        professor: professor ? { 
-          id: professor.id, 
-          nome: professor.nome 
-        } : null
+        professor: professor ? { id: professor.id, nome: professor.nome } : null
       };
     });
     res.json(aulasDetalhadas);
@@ -296,33 +266,22 @@ app.post('/aulas', (req, res) => {
   try {
     const db = readDB();
     const { data, horario, professorId, turma } = req.body;
-    
-    // Validações
     if (!data || !horario || !professorId || !turma) {
-      return res.status(400).json({ 
-        error: 'Todos os campos são obrigatórios' 
-      });
+      return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
     }
-    
-    // Verificar se professor existe
+    // Verifica se o professor existe
     const professor = db.professores.find(p => p.id === professorId);
     if (!professor) {
       return res.status(400).json({ error: 'Professor não encontrado' });
     }
-    
-    // Verificar conflito de horários
-    const temConflito = db.aulas.some(aula => 
-      aula.data === data && 
-      aula.horario === horario && 
+    // Verifica conflito de horário para o mesmo professor ou turma
+    const conflito = db.aulas.some(aula =>
+      aula.data === data && aula.horario === horario &&
       (aula.professorId === professorId || aula.turma === turma)
     );
-    
-    if (temConflito) {
-      return res.status(400).json({ 
-        error: 'Já existe uma aula neste horário para este professor ou turma' 
-      });
+    if (conflito) {
+      return res.status(400).json({ error: 'Já existe uma aula neste horário para este professor ou turma' });
     }
-    
     const novaAula = {
       id: db.aulas.length + 1,
       data,
@@ -331,36 +290,50 @@ app.post('/aulas', (req, res) => {
       turma,
       createdAt: new Date().toISOString()
     };
-    
     db.aulas.push(novaAula);
     writeDB(db);
-    res.status(201).json({ 
-      message: 'Aula agendada com sucesso', 
-      aula: novaAula 
-    });
+    res.status(201).json({ message: 'Aula agendada com sucesso', aula: novaAula });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao criar aula' });
   }
 });
+
+app.delete('/aulas/:id', (req, res) => {
+  try {
+    const db = readDB();
+    const aulaId = parseInt(req.params.id, 10);
+    const aula = db.aulas.find(a => a.id === aulaId);
+    if (!aula) {
+      return res.status(404).json({ error: 'Aula não encontrada' });
+    }
+    // Impede remoção caso a aula já tenha ocorrido
+    const dataAula = new Date(`${aula.data}T${aula.horario}`);
+    if (dataAula < new Date()) {
+      return res.status(400).json({ error: 'Não é possível remover aulas que já aconteceram' });
+    }
+    db.aulas = db.aulas.filter(a => a.id !== aulaId);
+    writeDB(db);
+    res.json({ message: 'Aula removida com sucesso', removed: aula });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao remover aula' });
+  }
+});
+
+/* ============================
+   Rotas de TROCAS (EXCHANGES)
+=============================== */
 app.get('/trocas', (req, res) => {
   try {
     const db = readDB();
-    // Add details about professors and classes to each exchange
+    // Adiciona detalhes de professores e aula para cada troca
     const trocasDetalhadas = db.trocas.map(troca => {
       const professorOriginal = db.professores.find(p => p.id === troca.professorIdOriginal);
       const professorSubstituto = db.professores.find(p => p.id === troca.professorIdSubstituto);
       const aula = db.aulas.find(a => a.id === troca.aulaId);
-      
       return {
         ...troca,
-        professorOriginal: professorOriginal ? {
-          id: professorOriginal.id,
-          nome: professorOriginal.nome
-        } : null,
-        professorSubstituto: professorSubstituto ? {
-          id: professorSubstituto.id,
-          nome: professorSubstituto.nome
-        } : null,
+        professorOriginal: professorOriginal ? { id: professorOriginal.id, nome: professorOriginal.nome } : null,
+        professorSubstituto: professorSubstituto ? { id: professorSubstituto.id, nome: professorSubstituto.nome } : null,
         aula: aula ? {
           id: aula.id,
           data: aula.data,
@@ -369,7 +342,6 @@ app.get('/trocas', (req, res) => {
         } : null
       };
     });
-    
     res.json(trocasDetalhadas);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao buscar trocas' });
@@ -380,35 +352,21 @@ app.post('/trocas', (req, res) => {
   try {
     const db = readDB();
     const { aulaId, professorIdOriginal, professorIdSubstituto, motivo } = req.body;
-    
-    // Validações
     if (!aulaId || !professorIdOriginal || !professorIdSubstituto || !motivo) {
-      return res.status(400).json({ 
-        error: 'Todos os campos são obrigatórios' 
-      });
+      return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
     }
-    
-    // Verificar se a aula existe
     const aula = db.aulas.find(a => a.id === aulaId);
     if (!aula) {
       return res.status(400).json({ error: 'Aula não encontrada' });
     }
-    
-    // Verificar se os professores existem
-    const professorOriginal = db.professores.find(p => p.id === professorIdOriginal);
-    const professorSubstituto = db.professores.find(p => p.id === professorIdSubstituto);
-    
-    if (!professorOriginal || !professorSubstituto) {
+    const profOrig = db.professores.find(p => p.id === professorIdOriginal);
+    const profSub = db.professores.find(p => p.id === professorIdSubstituto);
+    if (!profOrig || !profSub) {
       return res.status(400).json({ error: 'Um ou mais professores não encontrados' });
     }
-    
-    // Verificar se o professor original é realmente o professor da aula
     if (aula.professorId !== professorIdOriginal) {
-      return res.status(400).json({ 
-        error: 'O professor original não está designado para esta aula' 
-      });
+      return res.status(400).json({ error: 'O professor original não está designado para esta aula' });
     }
-    
     const novaTroca = {
       id: db.trocas.length + 1,
       aulaId,
@@ -418,14 +376,9 @@ app.post('/trocas', (req, res) => {
       status: 'PENDENTE',
       createdAt: new Date().toISOString()
     };
-    
     db.trocas.push(novaTroca);
     writeDB(db);
-    
-    res.status(201).json({ 
-      message: 'Solicitação de troca criada com sucesso',
-      troca: novaTroca
-    });
+    res.status(201).json({ message: 'Solicitação de troca criada com sucesso', troca: novaTroca });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao criar solicitação de troca' });
   }
@@ -436,81 +389,41 @@ app.put('/trocas/:id', (req, res) => {
     const db = readDB();
     const trocaId = parseInt(req.params.id, 10);
     const { status } = req.body;
-    
-    const trocaIndex = db.trocas.findIndex(t => t.id === trocaId);
-    if (trocaIndex === -1) {
+    const index = db.trocas.findIndex(t => t.id === trocaId);
+    if (index === -1) {
       return res.status(404).json({ error: 'Troca não encontrada' });
     }
-    
-    // Validar status
     if (!['APROVADA', 'REJEITADA'].includes(status)) {
-      return res.status(400).json({ 
-        error: 'Status inválido. Use APROVADA ou REJEITADA' 
-      });
+      return res.status(400).json({ error: 'Status inválido. Use APROVADA ou REJEITADA' });
     }
-    
-    const troca = db.trocas[trocaIndex];
-    
-    // Se aprovada, atualizar o professor da aula
+    const troca = db.trocas[index];
+    // Se aprovada, atualiza o professor da aula
     if (status === 'APROVADA') {
-      const aulaIndex = db.aulas.findIndex(a => a.id === troca.aulaId);
-      if (aulaIndex !== -1) {
-        db.aulas[aulaIndex].professorId = troca.professorIdSubstituto;
+      const aulaIdx = db.aulas.findIndex(a => a.id === troca.aulaId);
+      if (aulaIdx !== -1) {
+        db.aulas[aulaIdx].professorId = troca.professorIdSubstituto;
       }
     }
-    
-    // Atualizar status da troca
-    db.trocas[trocaIndex] = {
+    db.trocas[index] = {
       ...troca,
       status,
       updatedAt: new Date().toISOString()
     };
-    
     writeDB(db);
-    res.json({
-      message: `Troca ${status.toLowerCase()} com sucesso`,
-      troca: db.trocas[trocaIndex]
-    });
+    res.json({ message: `Troca ${status.toLowerCase()} com sucesso`, troca: db.trocas[index] });
   } catch (error) {
     res.status(500).json({ error: 'Erro ao atualizar troca' });
   }
 });
-app.delete('/aulas/:id', (req, res) => {
-  try {
-    const db = readDB();
-    const aulaId = parseInt(req.params.id, 10);
-    const aula = db.aulas.find(a => a.id === aulaId);
-    
-    if (!aula) {
-      return res.status(404).json({ error: 'Aula não encontrada' });
-    }
-    
-    // Verificar se a aula já aconteceu
-    const dataAula = new Date(`${aula.data}T${aula.horario}`);
-    if (dataAula < new Date()) {
-      return res.status(400).json({ 
-        error: 'Não é possível remover aulas que já aconteceram' 
-      });
-    }
-    
-    db.aulas = db.aulas.filter(a => a.id !== aulaId);
-    writeDB(db);
-    res.json({ 
-      message: 'Aula removida com sucesso',
-      removed: aula 
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Erro ao remover aula' });
-  }
-});
 
-// Error handling middleware
+/* ============================
+   Middleware de ERRO e 404
+=============================== */
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('Erro interno:', err);
   res.status(500).json({ error: 'Erro interno do servidor' });
 });
 
-// 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Rota não encontrada' });
 });
