@@ -22,7 +22,7 @@ app.get('/', (req, res) => {
 });
 
 // Routes for Materias
-app.get('/api/materias', async (req, res) => {
+app.get('/materias', async (req, res) => {
   try {
     const { rows: materias } = await pool.query('SELECT * FROM materias');
     res.json(materias);
@@ -32,7 +32,7 @@ app.get('/api/materias', async (req, res) => {
   }
 });
 
-app.post('/api/materias', async (req, res) => {
+app.post('/materias', async (req, res) => {
   try {
     const { professor, materia } = req.body;
     const materiasResult = await pool.query(
@@ -47,7 +47,7 @@ app.post('/api/materias', async (req, res) => {
 });
 
 // Routes for Aulas
-app.get('/api/aulas', async (req, res) => {
+app.get('/aulas', async (req, res) => {
   try {
     const { rows: aulas } = await pool.query('SELECT * FROM aulas');
     res.json(aulas);
@@ -57,7 +57,7 @@ app.get('/api/aulas', async (req, res) => {
   }
 });
 
-app.post('/api/aulas', async (req, res) => {
+app.post('/aulas', async (req, res) => {
   try {
     const { data, horario, professor, turma } = req.body;
     const aulasResult = await pool.query(
